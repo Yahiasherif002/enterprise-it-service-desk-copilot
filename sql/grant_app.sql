@@ -1,0 +1,4 @@
+IF USER_ID('$(AppName)') IS NULL
+CREATE USER [$(AppName)] FROM EXTERNAL PROVIDER;
+
+ALTER ROLE servicedesk_app ADD MEMBER [$(AppName)];

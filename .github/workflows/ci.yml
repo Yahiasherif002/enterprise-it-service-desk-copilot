@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test the API against SQL Server
+        run: docker compose run --rm tests
+
+      - name: Build the Bicep template
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Validate the custom connector definition
+        run: npx --yes @apidevtools/swagger-cli@4.0.4 validate connector/apiDefinition.swagger.json

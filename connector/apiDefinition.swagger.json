@@ -1,0 +1,143 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "IT Service Desk",
+    "description": "Submits IT requests to ServiceNow with approvals and audit history.",
+    "version": "1.0"
+  },
+  "host": "servicedesk.example.com",
+  "basePath": "/api",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "securityDefinitions": {
+    "oauth2-auth": {
+      "type": "oauth2",
+      "flow": "accessCode",
+      "authorizationUrl": "https://login.microsoftonline.com/common/oauth2/authorize",
+      "tokenUrl": "https://login.windows.net/common/oauth2/authorize",
+      "scopes": {}
+    }
+  },
+  "security": [{"oauth2-auth": []}],
+  "paths": {
+    "/requests": {
+      "post": {
+        "operationId": "SubmitRequest",
+        "summary": "Submit an IT request",
+        "description": "Creates a ServiceNow incident, or holds the request for approval when its category needs one. Safe to retry with the same request ID.",
+        "parameters": [
+          {"name": "body", "in": "body", "required": true, "schema": {"$ref": "#/definitions/NewRequest"}}
+        ],
+        "responses": {
+          "200": {"description": "Request created, pending approval or rejected", "schema": {"$ref": "#/definitions/RequestState"}},
+          "400": {"description": "Invalid request", "schema": {"$ref": "#/definitions/Error"}},
+          "502": {"description": "ServiceNow call failed; retry with the same request ID", "schema": {"$ref": "#/definitions/RequestState"}},
+          "503": {"description": "Another attempt is creating the ticket; retry", "schema": {"$ref": "#/definitions/RequestState"}}
+        }
+      },
+      "get": {
+        "operationId": "ListRequests",
+        "summary": "List my requests",
+        "description": "Returns the requester's 10 latest requests with live ServiceNow state and audit history.",
+        "parameters": [
+          {"name": "requester", "in": "query", "required": true, "type": "string", "x-ms-summary": "Requester email"}
+        ],
+        "responses": {
+          "200": {"description": "Requests", "schema": {"$ref": "#/definitions/RequestList"}},
+          "400": {"description": "Invalid requester", "schema": {"$ref": "#/definitions/Error"}}
+        }
+      }
+    },
+    "/requests/{request_id}/decision": {
+      "post": {
+        "operationId": "DecideRequest",
+        "summary": "Record an approval decision",
+        "description": "Approves or rejects a pending request. Approval creates the ServiceNow incident.",
+        "parameters": [
+          {"name": "request_id", "in": "path", "required": true, "type": "string", "x-ms-summary": "Request ID"},
+          {"name": "body", "in": "body", "required": true, "schema": {"$ref": "#/definitions/Decision"}}
+        ],
+        "responses": {
+          "200": {"description": "Request state after the decision", "schema": {"$ref": "#/definitions/RequestState"}},
+          "400": {"description": "Invalid decision", "schema": {"$ref": "#/definitions/Error"}},
+          "404": {"description": "Unknown request", "schema": {"$ref": "#/definitions/Error"}},
+          "502": {"description": "ServiceNow call failed; retry", "schema": {"$ref": "#/definitions/RequestState"}}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "NewRequest": {
+      "type": "object",
+      "required": ["request_id", "requester", "summary", "category"],
+      "properties": {
+        "request_id": {"type": "string", "x-ms-summary": "Request ID", "description": "Unique ID for this request, reused on retries (for example the flow run name)."},
+        "requester": {"type": "string", "x-ms-summary": "Requester email"},
+        "summary": {"type": "string", "x-ms-summary": "Summary", "description": "Up to 160 characters."},
+        "details": {"type": "string", "x-ms-summary": "Details"},
+        "category": {"type": "string", "x-ms-summary": "Category", "enum": ["hardware", "software", "network", "database", "inquiry"]},
+        "urgency": {"type": "integer", "x-ms-summary": "Urgency", "description": "1 high, 2 medium, 3 low.", "enum": [1, 2, 3], "default": 3},
+        "impact": {"type": "integer", "x-ms-summary": "Impact", "description": "1 high, 2 medium, 3 low.", "enum": [1, 2, 3], "default": 3}
+      }
+    },
+    "Decision": {
+      "type": "object",
+      "required": ["outcome", "approver"],
+      "properties": {
+        "outcome": {"type": "string", "x-ms-summary": "Outcome", "enum": ["approved", "rejected"]},
+        "approver": {"type": "string", "x-ms-summary": "Approver email"},
+        "comment": {"type": "string", "x-ms-summary": "Comment"}
+      }
+    },
+    "RequestState": {
+      "type": "object",
+      "properties": {
+        "request_id": {"type": "string", "x-ms-summary": "Request ID"},
+        "status": {"type": "string", "x-ms-summary": "Status", "enum": ["pending_approval", "rejected", "ready", "creating", "created", "failed"]},
+        "ticket_number": {"type": "string", "x-ms-summary": "Ticket number"},
+        "ticket_url": {"type": "string", "x-ms-summary": "Ticket URL"}
+      }
+    },
+    "RequestList": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "request_id": {"type": "string", "x-ms-summary": "Request ID"},
+              "summary": {"type": "string", "x-ms-summary": "Summary"},
+              "category": {"type": "string", "x-ms-summary": "Category"},
+              "status": {"type": "string", "x-ms-summary": "Status"},
+              "ticket_number": {"type": "string", "x-ms-summary": "Ticket number"},
+              "ticket_url": {"type": "string", "x-ms-summary": "Ticket URL"},
+              "ticket_state": {"type": "string", "x-ms-summary": "Ticket state"},
+              "assigned_to": {"type": "string", "x-ms-summary": "Assigned to"},
+              "submitted_at": {"type": "string", "format": "date-time", "x-ms-summary": "Submitted at"},
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "event": {"type": "string", "x-ms-summary": "Event"},
+                    "actor": {"type": "string", "x-ms-summary": "Actor"},
+                    "detail": {"type": "string", "x-ms-summary": "Detail"},
+                    "at": {"type": "string", "format": "date-time", "x-ms-summary": "At"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "error": {"type": "string", "x-ms-summary": "Error"}
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Local-dev-only-1
+  tests:
+    build:
+      context: api
+      dockerfile: tests/Dockerfile
+    depends_on: [sql]
+    environment:
+      SQL_SERVER: "Driver={ODBC Driver 18 for SQL Server};Server=sql;TrustServerCertificate=yes"
+      MSSQL_SA_PASSWORD: Local-dev-only-1
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes: [".:/src"]
+    working_dir: /src/api
+    command: python -m pytest -q -p no:cacheprovider
